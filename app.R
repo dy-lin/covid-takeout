@@ -26,19 +26,31 @@ data <-
 ui <- fluidPage(# Application title
     titlePanel("COVID-19 Pandemic Lockdown Takeout"),
     
-    # Sidebar with a slider input for number of bins
-    sidebarLayout(sidebarPanel(
-        selectInput(
-            "select",
-            label = p("Select y-axis for bar plot:"),
-            choices = colnames(data)[-1],
-            selected = "Restaurant"
-        ),
-        dateRangeInput("dates", label = p("Filter table by date range:"), start = "2020-03-12", end = "2020-12-31")),
-        mainPanel(
-            DT::dataTableOutput("table"),
-            plotOutput("plot"),
-            plotOutput("timeplot"))
+    fluidRow(column(
+        4,
+        sidebarPanel(
+            selectInput(
+                "select",
+                label = p("Select y-axis for bar plot:"),
+                choices = colnames(data)[-1],
+                selected = "Restaurant"
+            ),
+            dateRangeInput(
+                "dates",
+                label = p("Filter table by date range:"),
+                start = "2020-03-12",
+                end = "2020-12-31"
+            ),
+            width = 12
+        )
+    ),
+    column(8,
+           plotOutput("plot")
+           )
+    ),
+    fluidRow(
+        column(6, plotOutput("timeplot")),
+        column(6, DT::dataTableOutput("table"))
     )
 )
 
@@ -74,7 +86,8 @@ server <- function(input, output) {
             ggplot(aes(month, n, group = 1)) +
             geom_line() +
             geom_point() +
-            labs(x = "Month", y = "count")
+            labs(x = "Month", y = "count") +
+            theme_bw()
     })
 }
 

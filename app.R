@@ -1,26 +1,20 @@
 library(shiny)
-library(here)
 library(tidyverse)
 library(lubridate)
 library(DT)
 library(glue)
-
+library(googlesheets4)
 options(shiny.autoreload = TRUE)
+
+gs4_deauth()
+
 
 # Read in the TSV file
 data <-
-    read_tsv(
-        here("data", "COVID Takeout - Sheet1.tsv"),
-        col_types = cols (
-            Date = col_character(),
-            Restaurant = col_character(),
-            App = col_character(),
-            Item = col_character(),
-            Cuisine = col_character(),
-            Type = col_character()
+    read_sheet(
+        "https://docs.google.com/spreadsheets/d/1tzEXVleYYPfgmKesHbPilGaSYGloldkG4oQY_jn7UVw/edit?usp=sharing",
+        col_types = "Dccccc"
         )
-    ) %>%
-    mutate(Date = dmy(Date))
 
 # change layout to do rows
 ui <- fluidPage(# Application title

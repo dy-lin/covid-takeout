@@ -4,6 +4,9 @@ library(lubridate)
 library(DT)
 library(glue)
 library(googlesheets4)
+library(rlang)
+library(plotly)
+
 options(shiny.autoreload = TRUE)
 
 gs4_deauth()
@@ -16,25 +19,44 @@ data <-
         col_types = "Dccccc"
         )
 
-# change layout to do rows
+
+jscode <- "shinyjs.refresh = function() { history.go(0); }"
 ui <- fluidPage(# Application title
+    shinydisconnect::disconnectMessage2(),
+    shinyjs::useShinyjs(),
+    shinyjs::extendShinyjs(text = jscode, functions = c("refresh")),
     titlePanel("COVID-19 Pandemic Lockdown Takeout"),
-    
     fluidRow(column(
         4,
         sidebarPanel(
             selectInput(
                 "select",
                 label = p("Select y-axis for bar plot:"),
-                choices = colnames(data)[-1],
+                choices = as_tibble(colnames(data)) %>%
+                    filter(value != "Date") %>%
+                    pull(value),
                 selected = "Restaurant"
+            ),
+            checkboxInput("colourBy", label = "Breakdown by colour", value = FALSE),
+            conditionalPanel(
+                condition = "input.colourBy == true",
+                uiOutput("colourControls")
             ),
             dateRangeInput(
                 "dates",
-                label = p("Filter table by date range:"),
+                label = p("Filter by date range:"),
                 start = "2020-03-12",
                 end = "2020-12-31"
             ),
+            checkboxGroupInput(
+                "types",
+                label = p("Filter by type:"),
+                choices = unique(pull(data, Type)),
+                selected = "Food"
+            ),
+            strong("Interaction:"),
+            checkboxInput("interactive", label = "Make plots interactive using plotly", value = FALSE),
+            actionButton("refresh", "Reset", icon = icon("refresh")),
             width = 12
         )
     ),
@@ -44,44 +66,111 @@ ui <- fluidPage(# Application title
     ),
     fluidRow(
         column(6, plotOutput("timeplot")),
+        #column(6, plotlyOutput("timeplotly")),
         column(6, DT::dataTableOutput("table"))
     )
 )
 
 # Define server logic
 server <- function(input, output) {
+    observeEvent(input$refresh, {
+        shinyjs::js$refresh()
+    })
+    output$colourControls <- renderUI({
+        colourby <- as_tibble(colnames(data)) %>%
+            filter(value != input$select, !value %in% c("Date", "Type")) %>%
+            pull(value)
+        selectInput(
+            "colour",
+            label = p("Colour bars by:"),
+            choices = rev(colourby),
+            selected = colourby[0]
+        )
+    })
+    
+    filtered <- reactive({
+        filtered <- data
+        if (!is.null(input$dates[1]) && !is.null(input$dates[2])) {
+            filtered <- filtered %>%
+                filter(Date >= input$dates[1],
+                       Date <= input$dates[2])
+        }
+        if (!is.null(input$types)) {
+            filtered <- filtered %>%
+                filter(Type %in% input$types)
+        }
+        filtered
+    })
     output$table <- renderDataTable({
-        arrange(data, Date) %>%
-            filter(Date >= input$dates[1],
-                   Date <= input$dates[2])
+        arrange(filtered(), desc(Date))
     })
     output$plot <- renderPlot({
-        data %>%
-            mutate(fct = factor(!!sym(input$select)
-            ) %>%
-            fct_infreq() %>%
-            fct_rev()) %>%
-            drop_na(!!sym(input$select)) %>%
-            ggplot(aes(fct)) +
-            geom_bar() +
-            coord_flip() +
-            labs(x = input$select,
-                 title = glue("Breakdown by {input$select}")) +
-            theme_minimal() +
-            theme(legend.position = "none")
+        if (input$colourBy == TRUE && !is.null(input$colour)) {
+            item_order <- sort(unique(data$Item))
+            item_order <- item_order[item_order != "Other"]
+            item_order <- c(item_order, "Other")
+            filtered() %>%
+                mutate(fct = factor(!!sym(input$select)
+                ) %>%
+                    fct_infreq() %>%
+                    fct_rev(),
+                Item = factor(Item, levels = item_order)) %>%
+                drop_na(!!sym(input$select)) %>%
+                ggplot(aes(fct, fill = !!sym(rlang::as_string(input$colour)))) +
+                geom_bar() +
+                coord_flip() +
+                labs(x = input$select,
+                     title = glue("Breakdown by {input$select}")) +
+                theme_minimal() +
+                theme(text = element_text(size =15))
+        } else {
+            filtered() %>%
+                mutate(fct = factor(!!sym(input$select)
+                ) %>%
+                    fct_infreq() %>%
+                    fct_rev()) %>%
+                drop_na(!!sym(input$select)) %>%
+                ggplot(aes(fct)) +
+                geom_bar(fill = "deepskyblue2") +
+                coord_flip() +
+                labs(x = input$select,
+                     title = glue("Breakdown by {input$select}")) +
+                theme_minimal() +
+                theme(legend.position = "none") +
+                theme(text = element_text(size =15))
+        }
     })
     output$timeplot <- renderPlot({
-        data %>%
-            mutate(month = month(Date, label = TRUE)) %>%
-            filter(Date >= input$dates[1],
-                   Date <= input$dates[2]) %>%
-            arrange(month) %>%
-            count(month) %>% 
+        filtered() %>%
+            mutate(month = month(Date, label = TRUE),
+                   year = year(Date)) %>%
+            arrange(month,year) %>%
+            count(month, year) %>% 
             ggplot(aes(month, n, group = 1)) +
             geom_line() +
             geom_point() +
             labs(x = "Month", y = "count") +
-            theme_bw()
+            theme_bw()  +
+            labs(title = "Time Series", subtitle = glue("{input$dates[1] } to {input$dates[2]}")) +
+            theme(text = element_text(size =15)) +
+            facet_grid(~ year)
+    })
+    
+    output$timeplotly <- renderPlotly({
+        {filtered() %>%
+            mutate(month = month(Date, label = TRUE),
+                   year = year(Date)) %>%
+            arrange(month,year) %>%
+            count(month, year) %>% 
+            ggplot(aes(month, n, group = 1)) +
+            geom_line() +
+            geom_point() +
+            labs(x = "Month", y = "count") +
+            theme_bw()  +
+            labs(title = "Time Series", subtitle = glue("{input$dates[1] } to {input$dates[2]}")) +
+            theme(text = element_text(size =12)) +
+            facet_grid(~ year) } %>%
+            ggplotly()
     })
 }
 

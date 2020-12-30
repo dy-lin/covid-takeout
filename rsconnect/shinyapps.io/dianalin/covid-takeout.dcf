@@ -1,0 +1,10 @@
+name: covid-takeout
+title:
+username:
+account: dianalin
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3435080
+bundleId: 4040640
+url: https://dianalin.shinyapps.io/covid-takeout/
+when: 1609293757.05644

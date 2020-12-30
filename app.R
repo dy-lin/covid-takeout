@@ -37,6 +37,8 @@ ui <- fluidPage(# Application title
                     pull(value),
                 selected = "Restaurant"
             ),
+            # sliderInput("slider", label = h3("Select x-axis range for bar plot"), min = 0, max = 20, value = c(0, 20)),
+        # find a way to make this 20 dynamic
             checkboxInput("colourBy", label = "Breakdown by colour", value = FALSE),
             conditionalPanel(
                 condition = "input.colourBy == true",
@@ -54,9 +56,11 @@ ui <- fluidPage(# Application title
                 choices = unique(pull(data, Type)),
                 selected = "Food"
             ),
-            strong("Interaction:"),
-            checkboxInput("interactive", label = "Make plots interactive using plotly", value = FALSE),
-            actionButton("refresh", "Reset", icon = icon("refresh")),
+            fluidRow(
+                column(6, actionButton("refresh", "Reset", icon = icon("refresh")), align = 'left'),
+                column(6, downloadButton("download", "Download"), align = 'right'),
+                width = 12
+            ),
             width = 12
         )
     ),
@@ -66,7 +70,6 @@ ui <- fluidPage(# Application title
     ),
     fluidRow(
         column(6, plotOutput("timeplot")),
-        #column(6, plotlyOutput("timeplotly")),
         column(6, DT::dataTableOutput("table"))
     )
 )
@@ -109,7 +112,7 @@ server <- function(input, output) {
             item_order <- sort(unique(data$Item))
             item_order <- item_order[item_order != "Other"]
             item_order <- c(item_order, "Other")
-            filtered() %>%
+            plot <- filtered() %>%
                 mutate(fct = factor(!!sym(input$select)
                 ) %>%
                     fct_infreq() %>%
@@ -123,8 +126,11 @@ server <- function(input, output) {
                      title = glue("Breakdown by {input$select}")) +
                 theme_minimal() +
                 theme(text = element_text(size =15))
+            # if(!is.null(input$slider[1]) && !is.null(input$slider[2])) {
+            #     plot <- plot + ylim(input$slider[1], input$slider[2])
+            # }
         } else {
-            filtered() %>%
+            plot <- filtered() %>%
                 mutate(fct = factor(!!sym(input$select)
                 ) %>%
                     fct_infreq() %>%
@@ -138,8 +144,13 @@ server <- function(input, output) {
                 theme_minimal() +
                 theme(legend.position = "none") +
                 theme(text = element_text(size =15))
+            # if(!is.null(input$slider[1]) && !is.null(input$slider[2])) {
+            #     plot <- plot + ylim(input$slider[1], input$slider[2])
+            # }
         }
+        plot
     })
+    
     output$timeplot <- renderPlot({
         filtered() %>%
             mutate(month = month(Date, label = TRUE),
@@ -156,22 +167,14 @@ server <- function(input, output) {
             facet_grid(~ year)
     })
     
-    output$timeplotly <- renderPlotly({
-        {filtered() %>%
-            mutate(month = month(Date, label = TRUE),
-                   year = year(Date)) %>%
-            arrange(month,year) %>%
-            count(month, year) %>% 
-            ggplot(aes(month, n, group = 1)) +
-            geom_line() +
-            geom_point() +
-            labs(x = "Month", y = "count") +
-            theme_bw()  +
-            labs(title = "Time Series", subtitle = glue("{input$dates[1] } to {input$dates[2]}")) +
-            theme(text = element_text(size =12)) +
-            facet_grid(~ year) } %>%
-            ggplotly()
-    })
+    output$download <- downloadHandler(
+        filename = function() {
+            "covid-takeout.csv"
+        },
+        content = function(con) {
+            write_csv(data, con)
+        }
+    )
 }
 
 # Run the application

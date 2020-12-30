@@ -102,12 +102,22 @@ server <- function(input, output) {
             filtered <- filtered %>%
                 filter(Type %in% input$types)
         }
+        if(is.null(input$types)) {
+            return(NULL)
+        }
+        
         filtered
     })
     output$table <- renderDataTable({
+        if (is.null(filtered())) {
+            return(NULL)
+        }
         arrange(filtered(), desc(Date))
     })
     output$plot <- renderPlot({
+        if (is.null(filtered())) {
+            return(NULL)
+        }
         if (input$colourBy == TRUE && !is.null(input$colour)) {
             item_order <- sort(unique(data$Item))
             item_order <- item_order[item_order != "Other"]
@@ -152,6 +162,9 @@ server <- function(input, output) {
     })
     
     output$timeplot <- renderPlot({
+        if (is.null(filtered())) {
+            return(NULL)
+        }
         filtered() %>%
             mutate(month = month(Date, label = TRUE),
                    year = year(Date)) %>%
